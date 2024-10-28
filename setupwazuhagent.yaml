@@ -4,6 +4,7 @@
   become: true
   vars:
     wazuh_manager_ip: "wazuh-acs.vozitel.com"
+    username: "alejandro"
 
   tasks:
     - name: Actualizar el sistema
