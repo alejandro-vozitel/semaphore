@@ -1,0 +1,83 @@
+---
+- name: Playbook para instalar el agente de Wazuh
+  hosts: agents
+  become: true
+  vars:
+    wazuh_manager_ip: "wazuh-acs.vozitel.com"
+
+  tasks:
+    - name: Actualizar el sistema
+      ansible.builtin.yum:
+        name: "*"
+        state: latest
+      when: ansible_os_family == "RedHat"
+
+    - name: Actualizar el sistema
+      ansible.builtin.apt:
+        update_cache: yes
+        upgrade: dist
+      when: ansible_os_family == "Debian"
+
+    - name: Instalar dependencias en RedHat/CentOS
+      ansible.builtin.yum:
+        name:
+          - curl
+          - unzip
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Instalar dependencias en Debian/Ubuntu
+      ansible.builtin.apt:
+        name:
+          - curl
+          - unzip
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Descargar el instalador del agente de Wazuh
+      ansible.builtin.get_url:
+        url: https://packages.wazuh.com/4.x/yum/wazuh-agent-4.9.0-1.x86_64.rpm
+        dest: /tmp/wazuh-agent.rpm
+      when: ansible_os_family == "RedHat"
+
+    - name: Descargar el instalador del agente de Wazuh
+      ansible.builtin.get_url:
+        url: https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_4.9.0-1_amd64.deb
+        dest: /tmp/wazuh-agent.deb
+      when: ansible_os_family == "Debian"
+
+    - name: Instalar el agente de Wazuh en RedHat/CentOS
+      ansible.builtin.yum:
+        name: /tmp/wazuh-agent.rpm
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Instalar el agente de Wazuh en Debian/Ubuntu
+      ansible.builtin.apt:
+        deb: /tmp/wazuh-agent.deb
+      when: ansible_os_family == "Debian"
+
+    - name: Configurar la IP del servidor Wazuh en ossec.conf
+      ansible.builtin.lineinfile:
+        path: /var/ossec/etc/ossec.conf
+        regexp: '<address>[^<]+</address>'
+        line: "<address>{{ wazuh_manager_ip }}</address>"
+        backup: yes
+
+    - name: Iniciar y habilitar el agente de Wazuh
+      ansible.builtin.service:
+        name: wazuh-agent
+        state: started
+        enabled: true
+
+    - name: Limpiar archivos temporales
+      ansible.builtin.file:
+        path: "/tmp/wazuh-agent.rpm"
+        state: absent
+      when: ansible_os_family == "RedHat"
+
+    - name: Limpiar archivos temporales
+      ansible.builtin.file:
+        path: "/tmp/wazuh-agent.deb"
+        state: absent
+      when: ansible_os_family == "Debian"
