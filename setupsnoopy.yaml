@@ -1,0 +1,47 @@
+---
+- name: Playbook para instalar Snoopy en diferentes versiones de Debian y Ubuntu
+  hosts: all
+  become: true
+  tasks:
+    - name: Añadir clave pública de Snoopy
+      ansible.builtin.command: curl -fsSL https://a2o.github.io/snoopy-packages/snoopy-packages-key.pub | apt-key add -
+      register: add_key_result
+      changed_when: add_key_result.rc == 0
+
+    - name: Configurar el repositorio adecuado de Snoopy
+      ansible.builtin.lineinfile:
+        path: /etc/apt/sources.list.d/snoopy-stable.list
+        line: "{{ snoopy_repo }}"
+        create: true
+      vars:
+        snoopy_repo: |
+          {% if ansible_facts['distribution'] == 'Debian' %}
+            {% if ansible_facts['distribution_version'] == '12' %}
+              deb https://a2o.github.io/snoopy-packages/repo/debian bookworm stable
+            {% elif ansible_facts['distribution_version'] == '11' %}
+              deb https://a2o.github.io/snoopy-packages/repo/debian bullseye stable
+            {% elif ansible_facts['distribution_version'] == '10' %}
+              deb https://a2o.github.io/snoopy-packages/repo/debian buster stable
+            {% endif %}
+          {% elif ansible_facts['distribution'] == 'Ubuntu' %}
+            {% if ansible_facts['distribution_version'] == '24.04' %}
+              deb https://a2o.github.io/snoopy-packages/repo/ubuntu noble stable
+            {% elif ansible_facts['distribution_version'] == '22.04' %}
+              deb https://a2o.github.io/snoopy-packages/repo/ubuntu jammy stable
+            {% elif ansible_facts['distribution_version'] == '20.04' %}
+              deb https://a2o.github.io/snoopy-packages/repo/ubuntu focal stable
+            {% endif %}
+          {% else %}
+            ""
+          {% endif %}
+
+      when: snoopy_repo != ""
+
+    - name: Actualizar la lista de paquetes
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: Instalar Snoopy
+      ansible.builtin.apt:
+        name: snoopy
+        state: present
