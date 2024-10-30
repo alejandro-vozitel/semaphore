@@ -16,56 +16,60 @@
       Ubuntu24: "https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest+ubuntu24.04_all.deb"
 
   tasks:
-    - name: Instalar Zabbix según el sistema operativo
-      block:
-        - name: Instalar el repositorio de Zabbix
-          ansible.builtin.yum:
-            name: "{{ repo_urls[ansible_facts['distribution'] ~ ansible_facts['distribution_version'] | regex_search('^6|^7') | first | lower] }}"
-            state: present
-          when: ansible_facts['os_family'] == "RedHat"
+    - name: Determine the appropriate repo URL
+      set_fact:
+        repo_url: "{% if ansible_facts['os_family'] == 'RedHat' and ansible_facts['distribution_version'] | regex_search('^6') %} {{ repo_urls['CentOS6'] }} {% elif ansible_facts['os_family'] == 'RedHat' and ansible_facts['distribution_version'] | regex_search('^7') %} {{ repo_urls['CentOS7'] }} {% elif ansible_facts['os_family'] == 'Debian' and ansible_facts['distribution_version'] | regex_search('^10') %} {{ repo_urls['Debian10'] }} {% elif ansible_facts['os_family'] == 'Debian' and ansible_facts['distribution_version'] | regex_search('^11') %} {{ repo_urls['Debian11'] }} {% elif ansible_facts['os_family'] == 'Debian' and ansible_facts['distribution_version'] | regex_search('^12') %} {{ repo_urls['Debian12'] }} {% elif ansible_facts['os_family'] == 'Debian' and ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_version'] | regex_search('^20') %} {{ repo_urls['Ubuntu20'] }} {% elif ansible_facts['os_family'] == 'Debian' and ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_version'] | regex_search('^22') %} {{ repo_urls['Ubuntu22'] }} {% elif ansible_facts['os_family'] == 'Debian' and ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_version'] | regex_search('^24') %} {{ repo_urls['Ubuntu24'] }} {% else %} '' {% endif %}"
 
-        - name: Descargar el repositorio de Zabbix
-          ansible.builtin.get_url:
-            url: "{{ repo_urls[ansible_facts['distribution'] ~ ansible_facts['distribution_version'] | regex_search('^10|^11|^12|^20|^22|^24') | first | lower] }}"
-            dest: /tmp/zabbix-release.deb
-          when: ansible_facts['os_family'] == "Debian"
+    - name: Install Zabbix repository
+      when: repo_url != ''
+      ansible.builtin.yum:
+        name: "{{ repo_url }}"
+        state: present
+      when: ansible_facts['os_family'] == "RedHat"
 
-        - name: Instalar el repositorio de Zabbix (Debian)
-          ansible.builtin.command:
-            cmd: dpkg -i /tmp/zabbix-release.deb
-          when: ansible_facts['os_family'] == "Debian"
+    - name: Download Zabbix repository
+      when: repo_url != ''
+      ansible.builtin.get_url:
+        url: "{{ repo_url }}"
+        dest: /tmp/zabbix-release.deb
+      when: ansible_facts['os_family'] == "Debian"
 
-        - name: Limpiar la caché de yum (CentOS)
-          ansible.builtin.command:
-            cmd: yum clean all
-          when: ansible_facts['os_family'] == "RedHat"
+    - name: Install Zabbix repository (Debian)
+      when: ansible_facts['os_family'] == "Debian"
+      ansible.builtin.command:
+        cmd: dpkg -i /tmp/zabbix-release.deb
 
-        - name: Actualizar el índice de paquetes (Debian)
-          ansible.builtin.apt:
-            update_cache: yes
-          when: ansible_facts['os_family'] == "Debian"
+    - name: Clean yum cache (CentOS)
+      when: ansible_facts['os_family'] == "RedHat"
+      ansible.builtin.command:
+        cmd: yum clean all
 
-        - name: Instalar Zabbix Agent 2 y plugins
-          ansible.builtin.apt:
-            name: zabbix-agent2,zabbix-agent2-plugin-*
-            state: present
-          when: ansible_facts['os_family'] == "Debian"
+    - name: Update package index (Debian)
+      when: ansible_facts['os_family'] == "Debian"
+      ansible.builtin.apt:
+        update_cache: yes
 
-        - name: Instalar Zabbix Agent 2 y plugins
-          ansible.builtin.yum:
-            name: zabbix-agent2,zabbix-agent2-plugin-*
-            state: present
-          when: ansible_facts['os_family'] == "RedHat"
+    - name: Install Zabbix Agent 2 and plugins
+      ansible.builtin.apt:
+        name: zabbix-agent2,zabbix-agent2-plugin-*
+        state: present
+      when: ansible_facts['os_family'] == "Debian"
 
-        - name: Configurar la dirección del servidor Zabbix
-          ansible.builtin.lineinfile:
-            path: /etc/zabbix/zabbix_agent2.conf
-            regexp: '^Server='
-            line: "Server={{ zabbix_server_ip }}"
-            state: present
+    - name: Install Zabbix Agent 2 and plugins (CentOS)
+      ansible.builtin.yum:
+        name: zabbix-agent2,zabbix-agent2-plugin-*
+        state: present
+      when: ansible_facts['os_family'] == "RedHat"
 
-        - name: Reiniciar y habilitar el servicio Zabbix Agent 2
-          ansible.builtin.systemd:
-            name: zabbix-agent2
-            state: restarted
-            enabled: yes
+    - name: Configure Zabbix server address
+      ansible.builtin.lineinfile:
+        path: /etc/zabbix/zabbix_agent2.conf
+        regexp: '^Server='
+        line: "Server={{ zabbix_server_ip }}"
+        state: present
+
+    - name: Restart and enable Zabbix Agent 2 service
+      ansible.builtin.systemd:
+        name: zabbix-agent2
+        state: restarted
+        enabled: yes
